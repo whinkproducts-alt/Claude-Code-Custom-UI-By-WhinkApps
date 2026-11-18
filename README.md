@@ -4,6 +4,18 @@ A small local web page for [Claude Code](https://claude.com/claude-code). It lis
 
 No database, no build step, no dependencies. Plain Node.
 
+## Start here
+
+| I want to… | Go to |
+|---|---|
+| Use it on my own Mac or Windows PC | [Pick your computer](#pick-your-computer) below |
+| Set it up on my second computer | [docs/NEW-PC.md](docs/NEW-PC.md) |
+| Have Claude set it up on someone else's computer | [docs/PASTE-INTO-CLAUDE.md](docs/PASTE-INTO-CLAUDE.md) |
+| Get my own free-first gateway with my own keys | [docs/OMNIROUTE-CLONE.md](docs/OMNIROUTE-CLONE.md) |
+| Use a different or backup LLM | [docs/PUBLIC-GATEWAYS.md](docs/PUBLIC-GATEWAYS.md) |
+
+This project contains **no models and no keys**. You bring your own.
+
 ## Pick your computer
 
 | | |
@@ -13,7 +25,7 @@ No database, no build step, no dependencies. Plain Node.
 
 Everything Mac-only lives in the [`mac/`](mac) folder and everything Windows-only in [`windows/`](windows). Nothing else in the repo depends on your system.
 
-**Download the code first** (the repository is private, so sign in to GitHub):
+**Download the code first** (if you were given a private link, sign in to GitHub first):
 
 - On the GitHub page: click the green **Code** button, then **Download ZIP**, and unzip it.
 - Or in a terminal: `gh repo clone whinkproducts-alt/Claude-Code-Custom-UI-By-WhinkApps` (needs `gh auth login` once).
@@ -23,6 +35,14 @@ Everything Mac-only lives in the [`mac/`](mac) folder and everything Windows-onl
 ## 🍎 Install on Mac
 
 Open Terminal in the downloaded folder.
+
+**One command does everything below** (installs what is missing and puts the launcher on your Desktop):
+
+```bash
+sh mac/setup.sh
+```
+
+Or step by step:
 
 **1. Install what it needs** (git, Node.js 20+, Claude Code, GitHub CLI; skips what you have):
 
@@ -47,7 +67,7 @@ This creates **Claude Chats** in your `Applications` folder (inside your home fo
 ```bash
 brew install git node gh
 curl -fsSL https://claude.ai/install.sh | bash     # Claude Code, then run: claude
-brew install --cask tailscale                      # optional
+brew install --cask tailscale-app                      # optional
 node server.js                                     # then open http://127.0.0.1:3030
 ```
 
@@ -60,6 +80,14 @@ node server.js                                     # then open http://127.0.0.1:
 > **Not tested on a real Windows PC yet.** The scripts follow Microsoft's and Anthropic's documented install steps, but expect to fix small things. Tell us what breaks.
 
 Open **PowerShell** in the downloaded folder (Windows 10 or 11).
+
+**One command does everything below** (installs what is missing and puts the shortcut on your Desktop):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows\setup.ps1
+```
+
+Or step by step:
 
 **1. Install what it needs** (Git, Node.js 20+, Claude Code, GitHub CLI; skips what you have):
 
@@ -166,6 +194,12 @@ node --test
 ```
 
 Needs the `unzip` command (present on macOS and most Linux). The Windows scripts have no automated tests.
+
+## Safety and disclaimer
+
+Claude Chats can make Claude Code edit files and run commands on your computer. An AI judge decides what needs your approval, but it is not a guarantee. Work in folders you can restore, commit often, and read what you approve. The software is provided as is, with no warranty (Apache-2.0, see [LICENSE](LICENSE)).
+
+This is an independent project. It is not made by or affiliated with Anthropic. "Claude" and the Claude logo belong to Anthropic; the Mac launcher icon uses the logo from your own installed Claude app and nothing of Anthropic's is stored in this repository.
 
 ## Known limits
 

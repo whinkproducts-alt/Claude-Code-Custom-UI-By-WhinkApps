@@ -33,7 +33,7 @@ if have gh; then echo "gh: already installed"; else run brew install gh; fi
 
 # Tailscale (optional)
 if [ "$1" = "--with-tailscale" ]; then
-  if [ -d /Applications/Tailscale.app ] || have tailscale; then echo "tailscale: already installed"; else run brew install --cask tailscale; fi
+  if [ -d "${TAILSCALE_APP:-/Applications/Tailscale.app}" ] || have tailscale; then echo "tailscale: already installed"; else run brew install --cask tailscale-app; fi
 fi
 
 echo

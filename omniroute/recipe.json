@@ -1,0 +1,36 @@
+{
+  "about": "The Claude Code combos, as model names only. No keys and no connection IDs: apply-recipe.js maps each step to the providers YOU have connected.",
+  "freeIs": "A step marked free:true is priced at $0 so a spend cap can still be enforced on your key.",
+  "riskIs": "A step with a risk field is skipped unless you pass --include-risky.",
+  "combos": [
+    {
+      "name": "claude-code-paid-middle",
+      "steps": [
+        { "provider": "xkiro", "model": "mistralai/mistral-large-2512", "free": true, "risk": "xkiro is marked tos: avoid by OmniRoute" },
+        { "provider": "nvidia", "model": "nvidia/nemotron-3-ultra-550b-a55b", "free": true },
+        { "provider": "xkiro", "model": "mistralai/devstral-medium", "free": true, "risk": "xkiro is marked tos: avoid by OmniRoute" },
+        { "provider": "anthropic", "model": "claude-haiku-5-5" },
+        { "provider": "nvidia", "model": "nvidia/nemotron-3.5-super-vl-120b-a12b", "free": true },
+        { "provider": "gemini", "model": "gemini-3-flash-preview", "free": true },
+        { "provider": "xkiro", "model": "mistralai/mistral-medium-3.5", "free": true, "risk": "xkiro is marked tos: avoid by OmniRoute" },
+        { "provider": "nvidia", "model": "poolside/laguna-xs-2.1", "free": true },
+        { "provider": "gemini", "model": "gemini-3.1-flash-lite", "free": true },
+        { "provider": "anthropic", "model": "claude-sonnet-5-5" }
+      ]
+    },
+    {
+      "name": "claude-code-paid-last",
+      "steps": [
+        { "provider": "xkiro", "model": "mistralai/mistral-large-2512", "free": true, "risk": "xkiro is marked tos: avoid by OmniRoute" },
+        { "provider": "nvidia", "model": "nvidia/nemotron-3-ultra-550b-a55b", "free": true },
+        { "provider": "xkiro", "model": "mistralai/devstral-medium", "free": true, "risk": "xkiro is marked tos: avoid by OmniRoute" },
+        { "provider": "nvidia", "model": "nvidia/nemotron-3.5-super-vl-120b-a12b", "free": true },
+        { "provider": "gemini", "model": "gemini-3-flash-preview", "free": true },
+        { "provider": "xkiro", "model": "mistralai/mistral-medium-3.5", "free": true, "risk": "xkiro is marked tos: avoid by OmniRoute" },
+        { "provider": "nvidia", "model": "poolside/laguna-xs-2.1", "free": true },
+        { "provider": "gemini", "model": "gemini-3.1-flash-lite", "free": true },
+        { "provider": "anthropic", "model": "claude-sonnet-5-5" }
+      ]
+    }
+  ]
+}
