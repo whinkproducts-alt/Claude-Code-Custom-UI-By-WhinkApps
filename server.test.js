@@ -1,0 +1,171 @@
+const test = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const http = require('http');
+
+// Fake projects folder and a stub `claude` that just prints its own arguments, set up before the server loads.
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'clui-'));
+const home = path.join(tmp, 'home'); fs.mkdirSync(path.join(home, 'work'), { recursive: true }); fs.symlinkSync('/etc', path.join(home, 'escape'));
+process.env.HOME = home; // folder checks are made against this fake home, never your real one
+const proj = path.join(tmp, 'proj'); fs.mkdirSync(path.join(proj, 'p1'), { recursive: true }); // real layout: projects/<folder>/<id>.jsonl
+const LIVE = '11111111-1111-1111-1111-111111111111', GONE = '22222222-2222-2222-2222-222222222222';
+const sess = (id, cwd, n = 1) => fs.writeFileSync(path.join(proj, 'p1', id + '.jsonl'),
+  Array.from({ length: n }, (_, i) => JSON.stringify({ type: 'user', cwd, message: { content: 'msg ' + i } })).join('\n'));
+sess(LIVE, tmp, 300); sess(GONE, '/no/such/dir');
+const stub = path.join(tmp, 'claude'); fs.writeFileSync(stub, '#!/bin/sh\ncat >/dev/null\n[ -n "$STUB_PID" ] && echo $$ > "$STUB_PID"\n[ -n "$STUB_SLEEP" ] && exec sleep "$STUB_SLEEP"\necho "{\\"type\\":\\"result\\",\\"args\\":\\"$*\\"}"\n', { mode: 0o755 });
+process.env.CLAUDE_PROJECTS = proj; process.env.CLAUDE_BIN = stub; process.env.CLAUDE_UI_UPLOADS = path.join(tmp, 'uploads');
+
+const server = require('./server');
+let port;
+test.before(() => new Promise((r) => server.listen(0, '127.0.0.1', () => { port = server.address().port; r(); })));
+test.after(() => server.close());
+
+const call = (method, p, { headers = {}, body } = {}) => new Promise((resolve, reject) => {
+  const req = http.request({ host: '127.0.0.1', port, method, path: p, headers: { host: `127.0.0.1:${port}`, ...headers } }, (res) => {
+    let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => resolve({ status: res.statusCode, body: d }));
+  });
+  req.on('error', reject); req.end(body);
+});
+const post = (id, obj, headers = { 'x-ui': '1' }) => call('POST', `/api/sessions/${id}/send`, { headers, body: JSON.stringify(obj) });
+
+test('only the page itself may call the server', async () => {
+  assert.strictEqual((await call('GET', '/api/sessions', { headers: { host: 'evil.com' } })).status, 403);
+  assert.strictEqual((await post(LIVE, { text: 'x' }, {})).status, 405); // no x-ui header
+});
+
+test('model and effort are checked before they reach the command line', async () => {
+  assert.strictEqual((await post(LIVE, { text: 'x', model: '--dangerous' })).status, 400);
+  assert.strictEqual((await post(LIVE, { text: 'x', effort: 'ultra' })).status, 400);
+  assert.strictEqual((await post('..%2f..%2fetc', { text: 'x' })).status, 404);
+});
+
+test('a valid send resumes the right session with the chosen model and effort', async () => {
+  const r = await post(LIVE, { text: 'hi', model: 'claude-code-paid-last', effort: 'low' });
+  assert.strictEqual(r.status, 200);
+  const args = JSON.parse(r.body.trim().split('\n').pop()).args;
+  assert.match(args, new RegExp(`--resume ${LIVE}`));
+  assert.match(args, /--permission-mode auto/); // the AI judge, not the blanket acceptEdits
+  assert.match(args, /--model claude-code-paid-last/);
+  assert.match(args, /--effort low/);
+});
+
+test('a chat whose folder was deleted gives a clear error', async () => {
+  const r = await post(GONE, { text: 'hi' });
+  assert.strictEqual(r.status, 400);
+  assert.match(r.body, /no longer exists/);
+});
+
+test('opening a long chat returns only the last 200 messages, and ?all returns everything', async () => {
+  const some = JSON.parse((await call('GET', `/api/sessions/${LIVE}`)).body);
+  assert.deepStrictEqual([some.total, some.items.length, some.items.at(-1).text], [300, 200, 'msg 299']);
+  assert.strictEqual(JSON.parse((await call('GET', `/api/sessions/${LIVE}?all`)).body).items.length, 300);
+});
+
+const lastArgs = (r) => JSON.parse(r.body.trim().split('\n').pop()).args;
+
+test('read-only tools are always allowed; an approval adds exactly one command', async () => {
+  const plain = lastArgs(await post(LIVE, { text: 'hi' }));
+  assert.match(plain, /--allowedTools WebSearch Bash\(gh auth status:\*\)/);
+  assert.doesNotMatch(plain, /gh repo delete/);
+  const ok = lastArgs(await post(LIVE, { text: 'go', allow: ['Bash(gh repo list)'] }));
+  assert.match(ok, /Bash\(gh repo list\)$/);
+});
+
+test('approvals cannot be widened: no wildcards, no other tools, no more than five, no smuggled second rule', async () => {
+  const smuggled = ['Bash(x) Bash(rm -rf ~)', 'Bash(x),Bash(rm -rf ~)', 'Bash(echo hi) Bash(echo bye)', 'Bash((a)', 'Bash(a))'];
+  for (const allow of [['Bash(gh *)'], ['Bash(rm -rf ~)\nBash(x)'], ['Edit(/etc/hosts)'], ['WebFetch(domain:a.com/../x)'], Array(6).fill('Bash(ls)'), 'Bash(ls)', ...smuggled.map((r) => [r])]) {
+    assert.strictEqual((await post(LIVE, { text: 'x', allow })).status, 400, JSON.stringify(allow));
+  }
+  for (const allow of [['WebFetch(domain:example.com)'], ['Bash(echo $(date))'], ["Bash(python3 -c \"open('f','w').write('x')\")"]]) {
+    assert.strictEqual((await post(LIVE, { text: 'x', allow })).status, 200, JSON.stringify(allow)); // normal brackets are fine
+  }
+});
+
+test('attached folders: only real folders inside home, after resolving ../ and symlinks', async () => {
+  const bad = ['/etc', path.join(home, '..', '..', 'etc'), path.join(home, 'escape'), path.join(home, 'nope'), 'work', path.join(home, 'work', '..', '..')];
+  for (const d of bad) assert.strictEqual((await post(LIVE, { text: 'x', dirs: [d] })).status, 400, d);
+  const ok = await post(LIVE, { text: 'x', dirs: [path.join(home, 'work', '..', 'work')] }); // ../ that stays inside is fine
+  assert.strictEqual(ok.status, 200);
+  assert.ok(lastArgs(ok).includes(`--add-dir ${fs.realpathSync(path.join(home, 'work'))}`)); // the cleaned real path is what is passed
+});
+
+test('every run has a turn cap', async () => {
+  assert.match(lastArgs(await post(LIVE, { text: 'hi' })), /--max-turns 60/);
+});
+
+test('closing the request (Stop) kills the running claude', async () => {
+  const pidFile = path.join(tmp, 'stub.pid'); process.env.STUB_PID = pidFile; process.env.STUB_SLEEP = '30';
+  try {
+    const req = http.request({ host: '127.0.0.1', port, method: 'POST', path: `/api/sessions/${LIVE}/send`, headers: { host: `127.0.0.1:${port}`, 'x-ui': '1' } }, (res) => res.resume());
+    req.on('error', () => {}); req.end(JSON.stringify({ text: 'long job' }));
+    let pid; for (let i = 0; i < 50 && !pid; i++) { await new Promise((r) => setTimeout(r, 100)); try { pid = Number(fs.readFileSync(pidFile, 'utf8')); } catch {} }
+    assert.ok(pid, 'claude started');
+    const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+    assert.ok(alive());
+    req.destroy(); // what the Stop button does
+    for (let i = 0; i < 50 && alive(); i++) await new Promise((r) => setTimeout(r, 100));
+    assert.ok(!alive(), 'claude was killed');
+  } finally { delete process.env.STUB_PID; delete process.env.STUB_SLEEP; }
+});
+
+test('a missing claude gives a plain-English error, not a crash', async () => {
+  process.env.CLAUDE_BIN = '/no/such/claude';
+  try { assert.match((await post(LIVE, { text: 'hi' })).body, /Could not start Claude Code/); } finally { process.env.CLAUDE_BIN = stub; }
+});
+
+test('uploads are saved in their own folder, names are cleaned, and 25 MB is the limit', async () => {
+  const r = await call('POST', '/api/upload?name=..%2F..%2Fevil%20name.txt', { headers: { 'x-ui': '1' }, body: 'hello' });
+  const { path: saved, bytes } = JSON.parse(r.body);
+  assert.strictEqual(bytes, 5);
+  assert.match(saved.slice(process.env.CLAUDE_UI_UPLOADS.length), /^\/[0-9a-f]{16}\/[\w.-]+$/);
+  assert.ok(!saved.includes('..'), saved);
+  assert.strictEqual(fs.readFileSync(saved, 'utf8'), 'hello');
+  assert.strictEqual((await call('POST', '/api/upload?name=a', { body: 'x' })).status, 405); // no x-ui header
+  const big = await call('POST', '/api/upload?name=big', { headers: { 'x-ui': '1' }, body: Buffer.alloc(26 * 1024 * 1024) }).catch((e) => ({ status: e.code }));
+  assert.ok([413, 'ECONNRESET', 'EPIPE'].includes(big.status), String(big.status));
+});
+
+test('a chat can read only the uploads it mentions, new or from its own history', async () => {
+  const up = async (n) => path.dirname(JSON.parse((await call('POST', `/api/upload?name=${n}`, { headers: { 'x-ui': '1' }, body: n })).body).path);
+  const [mineNow, mineBefore, someoneElses] = [await up('a.txt'), await up('b.txt'), await up('c.txt')];
+  fs.appendFileSync(path.join(proj, 'p1', LIVE + '.jsonl'), '\n' + JSON.stringify({ type: 'user', message: { content: `earlier I attached ${mineBefore}/b.txt` } }));
+  const args = lastArgs(await post(LIVE, { text: `read ${mineNow}/a.txt` }));
+  assert.ok(args.includes(`--add-dir ${mineNow}`) && args.includes(`--add-dir ${mineBefore}`));
+  assert.ok(!args.includes(someoneElses) && !args.includes(`--add-dir ${process.env.CLAUDE_UI_UPLOADS} `));
+});
+
+test('old upload folders are deleted, fresh ones kept', () => {
+  const root = process.env.CLAUDE_UI_UPLOADS, old = path.join(root, 'aaaaaaaaaaaaaaaa'), fresh = path.join(root, 'bbbbbbbbbbbbbbbb');
+  for (const d of [old, fresh]) fs.mkdirSync(d, { recursive: true });
+  const longAgo = new Date(Date.now() - 40 * 864e5); fs.utimesSync(old, longAgo, longAgo);
+  assert.ok(server.pruneUploads(30) >= 1);
+  assert.ok(!fs.existsSync(old) && fs.existsSync(fresh));
+});
+
+test('health reports the gateway and whether Claude Code can start', async () => {
+  const health = async () => JSON.parse((await call('GET', '/api/health')).body);
+  assert.deepStrictEqual(await health(), { gateway: 'none', claude: true }); // fake HOME has no settings.json, so no gateway
+  process.env.CLAUDE_BIN = '/no/such/claude';
+  try { assert.strictEqual((await health()).claude, false); } finally { process.env.CLAUDE_BIN = stub; }
+});
+
+test('gateway light: down when unreachable or the key is refused, up when it answers, and the model list is filtered', async () => {
+  const settings = path.join(home, '.claude', 'settings.json'); fs.mkdirSync(path.dirname(settings), { recursive: true });
+  const fake = http.createServer((req, res) => {
+    if (req.headers.authorization !== 'Bearer good') { res.writeHead(401); return res.end('{}'); }
+    res.end(JSON.stringify({ data: ['claude-code', 'claude-code-x', 'anthropic/claude-haiku-5-5', 'anthropic/claude-haiku-5-5-high', 'mistral/other'].map((id) => ({ id })) }));
+  });
+  await new Promise((r) => fake.listen(0, '127.0.0.1', r));
+  const setGateway = (url, token) => fs.writeFileSync(settings, JSON.stringify({ env: { ANTHROPIC_BASE_URL: url, ANTHROPIC_AUTH_TOKEN: token, ANTHROPIC_MODEL: 'claude-code' } }));
+  const health = async () => JSON.parse((await call('GET', '/api/health')).body).gateway;
+  try {
+    setGateway('http://127.0.0.1:9', 'good'); assert.strictEqual(await health(), 'down'); // nothing listening
+    setGateway(`http://127.0.0.1:${fake.address().port}`, 'wrong'); assert.strictEqual(await health(), 'down'); // key refused
+    setGateway(`http://127.0.0.1:${fake.address().port}`, 'good'); assert.strictEqual(await health(), 'up');
+    const m = JSON.parse((await call('GET', '/api/models')).body);
+    assert.deepStrictEqual(m.models, ['claude-code', 'claude-code-x', 'anthropic/claude-haiku-5-5']); // combos + plain Anthropic only, no effort variants
+    assert.strictEqual(m.default, 'claude-code');
+  } finally { fake.close(); fs.rmSync(settings); }
+});

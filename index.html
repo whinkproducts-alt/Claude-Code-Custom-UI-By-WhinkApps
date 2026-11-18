@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Chats</title>
+<style>
+  :root { --bg:#faf9f5; --panel:#f0eee6; --ink:#1f1e1d; --mute:#73726c; --line:#e1ded2; --user:#e9e6dc; --accent:#c96442; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#262624; --panel:#1f1e1d; --ink:#faf9f5; --mute:#a3a198; --line:#3a3936; --user:#30302e; --accent:#d97757; } }
+  * { box-sizing: border-box; }
+  body { margin:0; height:100vh; display:grid; grid-template-columns: 320px 1fr; background:var(--bg); color:var(--ink); font:15px/1.55 -apple-system, system-ui, sans-serif; }
+  aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+  aside header { padding:14px; display:grid; gap:8px; }
+  input, select, textarea, button { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+  button { cursor:pointer; } button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button:disabled { opacity:.5; cursor:default; }
+  #list { overflow:auto; flex:1; }
+  .s { padding:10px 14px; border-top:1px solid var(--line); cursor:pointer; }
+  .s:hover, .s.on { background:var(--user); }
+  .s b { display:block; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .s small { color:var(--mute); }
+  .s.gone { opacity:.55; }
+  main { display:flex; flex-direction:column; min-height:0; }
+  #head { padding:8px 20px; border-bottom:1px solid var(--line); color:var(--mute); font-size:13px; min-height:46px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  #title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #exp { display:flex; gap:6px; flex:none; }
+  #msgs { flex:1; overflow:auto; padding:20px; }
+  .m { max-width:760px; margin:0 auto 14px; white-space:pre-wrap; word-wrap:break-word; }
+  .m.user { background:var(--user); padding:10px 14px; border-radius:12px; }
+  .m.tool { color:var(--mute); font:12px ui-monospace, Menlo, monospace; }
+  .more { display:block; margin:0 auto 14px; }
+  form { display:flex; flex-wrap:wrap; gap:8px; padding:14px 20px; border-top:1px solid var(--line); max-width:800px; width:100%; margin:0 auto; }
+  .opts { display:flex; gap:8px; width:100%; } .opts select { flex:1; min-width:0; }
+  textarea { flex:1; min-width:0; resize:none; height:56px; }
+  .empty { color:var(--mute); text-align:center; margin-top:20vh; }
+  .chip { background:var(--user); border-radius:999px; padding:2px 10px; font-size:12px; cursor:pointer; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .m.card { border:1px solid var(--accent); border-radius:12px; padding:10px 14px; }
+  .m.card pre { margin:6px 0; white-space:pre-wrap; font:12px ui-monospace, Menlo, monospace; }
+  .m.card button { margin-right:8px; }
+  #msgs.drop { outline:2px dashed var(--accent); outline-offset:-8px; }
+  @media (max-width: 720px) { body { grid-template-columns: 1fr; grid-template-rows: 38vh 1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+</style>
+</head>
+<body>
+<aside>
+  <header>
+    <div id="status" role="status" style="font-size:12px;color:var(--mute)">Checking…</div>
+    <input id="q" placeholder="Search chats" aria-label="Search chats">
+    <select id="cwd" aria-label="Folder for new chat"></select>
+    <button id="new">New chat in this folder</button>
+    <a href="/api/export-all.zip" download><button type="button" style="width:100%">Download all chats (.zip)</button></a>
+  </header>
+  <div id="list"></div>
+</aside>
+<main>
+  <div id="head"><span id="title">Pick a chat, or start a new one.</span>
+    <span id="exp" hidden><select id="fmt" aria-label="Download format">
+      <option value="md">Markdown (.md)</option><option value="txt">Text (.txt)</option><option value="json">JSON (.json)</option>
+      <option value="csv">CSV (.csv)</option><option value="html">Web page (.html)</option><option value="docx">Word (.docx)</option><option value="doc">Word, old style (.doc)</option><option value="pdf">PDF (print)</option>
+    </select><button id="dl">Download</button></span></div>
+  <div id="msgs"><div class="empty">Your Claude Code chats appear on the left.</div></div>
+  <form id="f">
+    <div class="opts">
+      <select id="model" aria-label="Model"></select>
+      <select id="effort" aria-label="Effort level">
+        <option value="">Effort: default</option><option>low</option><option>medium</option><option>high</option><option>xhigh</option><option>max</option>
+      </select>
+    </div>
+    <div class="opts">
+      <button type="button" id="attach">Attach files</button><button type="button" id="addDir">Add folder</button>
+      <input type="file" id="file" multiple hidden>
+    </div>
+    <div class="opts" id="chips"></div>
+    <textarea id="t" placeholder="Message Claude Code… (no chat selected = new chat in the folder chosen at top left)" aria-label="Message"></textarea><button class="primary" id="go">Send</button><button type="button" id="stop" hidden>Stop</button>
+  </form>
+</main>
+<script src="/export.js"></script>
+<script src="/rules.js"></script>
+<script>
+const $ = (s) => document.querySelector(s);
+const H = { 'content-type': 'application/json', 'x-ui': '1' };
+let sessions = [], cur = null; // cur = { id, cwd } ; id 'new' until the first reply reports a session id
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+const ago = (ms) => { const m = (Date.now() - ms) / 6e4; return m < 60 ? `${m|0}m ago` : m < 1440 ? `${m/60|0}h ago` : `${m/1440|0}d ago`; };
+// Scratch workspaces have long random paths; show the last part only.
+const folder = (p) => { const s = (p || '').split('/').filter(Boolean); return p && p.includes('scratch-workspaces') ? `scratch · ${s.at(-1)}` : s.slice(-2).join('/'); };
+
+async function load() {
+  sessions = await (await fetch('/api/sessions')).json();
+  const cwds = [...new Set(sessions.filter((s) => s.alive).map((s) => s.cwd))]; // folders that were deleted cannot host a chat
+  $('#cwd').innerHTML = cwds.map((c) => `<option value="${esc(c)}">${esc(folder(c))}</option>`).join('');
+  draw();
+}
+function draw() {
+  const q = $('#q').value.toLowerCase();
+  $('#list').innerHTML = sessions.filter((s) => (s.title + s.cwd).toLowerCase().includes(q))
+    .map((s) => `<div class="s ${cur?.id === s.id ? 'on' : ''} ${s.alive ? '' : 'gone'}" data-id="${s.id}"><b>${esc(s.title)}</b><small>${esc(folder(s.cwd))}${s.alive ? '' : ' (folder gone)'} · ${ago(s.mtime)}</small></div>`).join('');
+}
+function el(role, text) { const d = document.createElement('div'); d.className = 'm ' + role; d.textContent = text; return d; }
+function add(role, text) { const d = el(role, text); $('#msgs').append(d); $('#msgs').scrollTop = 1e9; return d; }
+function setCur(c, title) { cur = c; $('#title').textContent = title; $('#exp').hidden = c.id === 'new'; draw(); } // a new chat has nothing to export until it gets a reply
+
+// One fragment and one scroll: drawing hundreds of messages one by one forces a re-layout each time.
+function show(data, id) {
+  const frag = document.createDocumentFragment();
+  if (data.total > data.items.length) {
+    const b = document.createElement('button'); b.className = 'more'; b.textContent = `Show all ${data.total} messages (showing the last ${data.items.length})`;
+    b.onclick = async () => { b.disabled = true; show(await (await fetch(`/api/sessions/${id}?all`)).json(), id); };
+    frag.append(b);
+  }
+  data.items.forEach((i) => frag.append(el(i.role, i.text)));
+  $('#msgs').replaceChildren(frag); $('#msgs').scrollTop = 1e9;
+}
+async function open(id) {
+  const s = sessions.find((x) => x.id === id);
+  setCur({ id, cwd: s.cwd }, `${folder(s.cwd)}${s.alive ? '' : ' · folder no longer exists, read only'} · ${s.id}`);
+  show(await (await fetch(`/api/sessions/${id}`)).json(), id);
+}
+
+$('#list').onclick = (e) => { const x = e.target.closest('.s'); if (x) open(x.dataset.id); };
+$('#q').oninput = draw;
+$('#stop').onclick = () => stopRun?.();
+$('#new').onclick = () => { if (!$('#cwd').value) return; setCur({ id: 'new', cwd: $('#cwd').value }, `New chat · ${folder($('#cwd').value)}`); $('#msgs').innerHTML = ''; $('#t').focus(); };
+$('#t').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#f').requestSubmit(); } };
+
+// Files and folders waiting to go with the next message.
+let pending = []; // { kind: 'file' | 'dir', path }
+const chips = () => { $('#chips').replaceChildren(...pending.map((x, i) => { const c = document.createElement('span'); c.className = 'chip'; c.title = x.path + ' (click to remove)'; c.textContent = (x.kind === 'dir' ? 'folder ' : '') + x.path.split('/').at(-1) + ' ×'; c.onclick = () => { pending.splice(i, 1); chips(); }; return c; })); };
+async function upload(files) {
+  for (const f of files) {
+    if (f.size > 25 * 1024 * 1024) { add('tool', `${f.name} is over the 25 MB limit.`); continue; }
+    const r = await fetch('/api/upload?name=' + encodeURIComponent(f.name), { method: 'POST', headers: { 'x-ui': '1' }, body: f });
+    if (r.ok) { pending.push({ kind: 'file', path: (await r.json()).path }); chips(); } else add('tool', `Could not attach ${f.name}: ${(await r.json().catch(() => ({}))).error || r.status}`);
+  }
+}
+$('#attach').onclick = () => $('#file').click();
+$('#file').onchange = (e) => { upload([...e.target.files]); e.target.value = ''; };
+$('#addDir').onclick = () => { const p = prompt('Full path of the folder to give Claude access to (must be inside your home folder):'); if (p) { pending.push({ kind: 'dir', path: p.trim() }); chips(); } };
+$('#msgs').ondragover = (e) => { e.preventDefault(); $('#msgs').classList.add('drop'); };
+$('#msgs').ondragleave = () => $('#msgs').classList.remove('drop');
+$('#msgs').ondrop = (e) => { e.preventDefault(); $('#msgs').classList.remove('drop'); upload([...e.dataTransfer.files]); };
+
+// A blocked action becomes a card; Approve re-runs the turn allowing only that exact command (or one web domain).
+function approvalCard(d) {
+  const box = document.createElement('div'); box.className = 'm card';
+  let what, rule, again;
+  if (d.tool_name === 'Bash' && d.tool_input?.command) { what = 'Claude wants to run this command:'; rule = `Bash(${d.tool_input.command})`; again = d.tool_input.command; }
+  else if (d.tool_name === 'WebFetch' && d.tool_input?.url) { try { rule = `WebFetch(domain:${new URL(d.tool_input.url).hostname})`; } catch {} what = 'Claude wants to open this link:'; again = d.tool_input.url; }
+  const body = document.createElement('pre'); body.textContent = again || `${d.tool_name} ${JSON.stringify(d.tool_input || {}).slice(0, 200)}`;
+  box.append(Object.assign(document.createElement('div'), { textContent: what || `Blocked: ${d.tool_name} cannot be approved from this page.` }), body);
+  if (rule && !APPROVAL_RULES.isApproval(rule)) { rule = null; what = 'This command has unusual characters (unbalanced brackets or a *), so it cannot be approved from this page:'; }
+  if (rule) {
+    const ok = Object.assign(document.createElement('button'), { textContent: 'Approve once', className: 'primary' });
+    const no = Object.assign(document.createElement('button'), { textContent: 'Deny' });
+    ok.onclick = () => { ok.disabled = no.disabled = true; run(`I approve this exact action. Go ahead and do it now: ${again}`, { allow: [rule] }); };
+    no.onclick = () => { ok.disabled = no.disabled = true; box.append(Object.assign(document.createElement('div'), { textContent: 'Denied.' })); };
+    box.append(ok, no);
+  }
+  return box;
+}
+
+let stopRun = null; // aborts the run in progress (the Stop button)
+async function run(text, extra = {}) {
+  if (!cur) { if (!$('#cwd').value) return add('tool', 'Chats are still loading, try again in a second.'); setCur({ id: 'new', cwd: $('#cwd').value }, `New chat · ${folder($('#cwd').value)}`); $('#msgs').innerHTML = ''; }
+  // This run belongs to the chat it started in. If you open another chat meanwhile, its output must not appear there.
+  const mine = cur;
+  const show = (fn) => { if (cur === mine) fn(); };
+  mine.dirs = [...new Set([...(mine.dirs || []), ...(extra.dirs || [])])]; // folders stay attached for the whole chat
+  const ctl = new AbortController(); stopRun = () => ctl.abort();
+  $('#go').disabled = true; $('#stop').hidden = false; add('user', text);
+  try {
+    const r = await fetch(`/api/sessions/${mine.id}/send`, { method: 'POST', headers: H, signal: ctl.signal, body: JSON.stringify({ text, cwd: mine.cwd, model: $('#model').value, effort: $('#effort').value, dirs: mine.dirs, allow: extra.allow }) });
+    if (!r.ok) { const t = await r.text(); let msg = t; try { msg = JSON.parse(t).error; } catch {} return show(() => add('tool', 'Error: ' + msg)); }
+    const reader = r.body.getReader(), dec = new TextDecoder(); let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const l of lines) {
+        let o; try { o = JSON.parse(l); } catch { continue; }
+        if (o.type === 'assistant') for (const b of o.message.content) {
+          if (b.type === 'text') show(() => add('assistant', b.text));
+          else if (b.type === 'tool_use') show(() => add('tool', `${b.name} ${JSON.stringify(b.input).slice(0, 160)}`));
+        } else if (o.type === 'stderr') { if (!/unrecognized_model/.test(o.text)) show(() => add('tool', o.text)); } // that warning is just Claude Code not knowing a gateway model name
+        else if (o.type === 'result') {
+          if (mine.id === 'new' && o.session_id) mine.id = o.session_id; // later sends continue this chat
+          const seen = new Set();
+          for (const d of o.permission_denials || []) { const k = JSON.stringify([d.tool_name, d.tool_input]); if (!seen.has(k)) { seen.add(k); show(() => { $('#msgs').append(approvalCard(d)); $('#msgs').scrollTop = 1e9; }); } }
+        }
+      }
+    }
+  } catch (err) {
+    show(() => add('tool', err.name === 'AbortError' ? 'Stopped.' : 'Connection lost: ' + err.message));
+  } finally {
+    stopRun = null; $('#stop').hidden = true;
+    $('#go').disabled = false; // a dropped stream must never leave Send dead
+  }
+  await load(); show(() => setCur(mine, $('#title').textContent));
+}
+
+$('#f').onsubmit = (e) => {
+  e.preventDefault();
+  const text = $('#t').value.trim(); if (!text) return;
+  const full = text + (pending.length ? '\n\nAttached (read these as needed):\n' + pending.map((p) => '- ' + p.path).join('\n') : '');
+  const dirs = pending.filter((p) => p.kind === 'dir').map((p) => p.path);
+  pending = []; chips(); $('#t').value = '';
+  run(full, { dirs });
+};
+
+// Download the open chat in the chosen format. PDF = the browser's print dialog on the web-page version (choose "Save as PDF").
+$('#dl').onclick = async () => {
+  if (!cur || cur.id === 'new') return;
+  const s = sessions.find((x) => x.id === cur.id) || { title: 'chat', cwd: cur.cwd };
+  const c = { id: cur.id, title: s.title, cwd: s.cwd, items: (await (await fetch(`/api/sessions/${cur.id}?all`)).json()).items };
+  const f = $('#fmt').value;
+  if (f === 'docx') return Object.assign(document.createElement('a'), { href: `/api/sessions/${cur.id}/export.docx` }).click(); // built on the server
+  if (f === 'pdf') {
+    const fr = document.createElement('iframe'); fr.style.display = 'none'; fr.srcdoc = EXPORT_FORMATS.html.build(c);
+    fr.onload = () => { fr.contentWindow.print(); setTimeout(() => fr.remove(), 60000); }; document.body.append(fr); return;
+  }
+  const x = EXPORT_FORMATS[f];
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([x.build(c)], { type: x.mime + ';charset=utf-8' })), download: `${(c.title.replace(/[^\w -]+/g, '').trim().slice(0, 60) || 'chat')}-${new Date().toISOString().slice(0, 10)}.${x.ext}` });
+  a.click(); URL.revokeObjectURL(a.href);
+};
+
+const keep = (k, sel) => { try { const v = localStorage.getItem(k); if (v !== null && [...sel.options].some((o) => o.value === v)) sel.value = v; } catch {} sel.onchange = () => { try { localStorage.setItem(k, sel.value); } catch {} }; };
+async function loadModels() {
+  const m = await (await fetch('/api/models')).json();
+  $('#model').innerHTML = m.models.map((x) => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+  if (m.default) $('#model').value = m.default;
+  keep('model', $('#model')); keep('effort', $('#effort'));
+}
+// A dot for the gateway and for Claude Code itself, refreshed every 30 s.
+async function health() {
+  try {
+    const h = await (await fetch('/api/health')).json();
+    const gw = { up: ['#3a9d5d', 'Gateway connected'], down: ['#d1453b', 'Gateway not reachable. Is OmniRoute running?'], none: ['#a3a198', 'No gateway (direct)'] }[h.gateway] || ['#a3a198', '?'];
+    $('#status').replaceChildren(...[gw, h.claude ? null : ['#d1453b', 'Claude Code not found']].filter(Boolean).map(([c, t]) => Object.assign(document.createElement('div'), { innerHTML: `<span style="color:${c}">●</span> ` + esc(t) })));
+  } catch { $('#status').textContent = '● Server not responding'; }
+}
+health(); setInterval(health, 30000);
+loadModels();
+load();
+</script>
+</body>
+</html>
