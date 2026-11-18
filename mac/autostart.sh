@@ -1,11 +1,11 @@
 #!/bin/sh
 # macOS only. Start the chat UI at login and restart it if it stops.
-#   ./autostart.sh install | remove | status
+#   sh mac/autostart.sh install | remove | status
 # The agent runs the Node found on PATH right now (a version manager's Node path changes with the version: re-run install after upgrading).
 set -e
 LABEL=com.claudechats.local-ui
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 UID_="$(id -u)"
 
 case "$1" in
@@ -17,8 +17,8 @@ case "$1" in
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>$LABEL</string>
-  <key>ProgramArguments</key><array><string>$NODE</string><string>$DIR/server.js</string></array>
-  <key>WorkingDirectory</key><string>$DIR</string>
+  <key>ProgramArguments</key><array><string>$NODE</string><string>$ROOT/server.js</string></array>
+  <key>WorkingDirectory</key><string>$ROOT</string>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$HOME/.claude-local-ui/server.log</string>
@@ -41,5 +41,5 @@ EOF
   status)
     launchctl print "gui/$UID_/$LABEL" 2>/dev/null | grep -E "state =|pid =|last exit" || echo "Not installed."
     ;;
-  *) echo "usage: $0 install | remove | status"; exit 1 ;;
+  *) echo "usage: sh mac/autostart.sh install | remove | status"; exit 1 ;;
 esac

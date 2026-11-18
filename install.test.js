@@ -9,7 +9,7 @@ const { spawnSync } = require('child_process');
 const install = (tools, args = []) => {
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'inst-')), home = fs.mkdtempSync(path.join(os.tmpdir(), 'home-'));
   for (const [name, body] of Object.entries(tools)) fs.writeFileSync(path.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
-  const r = spawnSync('/bin/sh', [path.join(__dirname, 'install.sh'), ...args], { env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, DRY_RUN: '1' }, encoding: 'utf8' });
+  const r = spawnSync('/bin/sh', [path.join(__dirname, 'mac', 'install.sh'), ...args], { env: { PATH: `${bin}:/usr/bin:/bin`, HOME: home, DRY_RUN: '1' }, encoding: 'utf8' });
   return { out: r.stdout + r.stderr, code: r.status };
 };
 const mac = { skip: process.platform !== 'darwin' && 'macOS only' };

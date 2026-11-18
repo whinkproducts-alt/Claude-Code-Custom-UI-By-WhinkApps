@@ -15,7 +15,7 @@ const sess = (id, cwd, n = 1) => fs.writeFileSync(path.join(proj, 'p1', id + '.j
   Array.from({ length: n }, (_, i) => JSON.stringify({ type: 'user', cwd, message: { content: 'msg ' + i } })).join('\n'));
 sess(LIVE, tmp, 300); sess(GONE, '/no/such/dir');
 const stub = path.join(tmp, 'claude'); fs.writeFileSync(stub, '#!/bin/sh\ncat >/dev/null\n[ -n "$STUB_PID" ] && echo $$ > "$STUB_PID"\n[ -n "$STUB_SLEEP" ] && exec sleep "$STUB_SLEEP"\necho "{\\"type\\":\\"result\\",\\"args\\":\\"$*\\"}"\n', { mode: 0o755 });
-process.env.CLAUDE_PROJECTS = proj; process.env.CLAUDE_BIN = stub; process.env.CLAUDE_UI_UPLOADS = path.join(tmp, 'uploads');
+process.env.CLAUDE_PROJECTS = proj; process.env.CLAUDE_BIN = stub; process.env.CLAUDE_UI_UPLOADS = path.join(tmp, 'uploads'); process.env.CLAUDE_UI_DATA = path.join(tmp, 'data');
 
 const server = require('./server');
 let port;
@@ -168,4 +168,46 @@ test('gateway light: down when unreachable or the key is refused, up when it ans
     assert.deepStrictEqual(m.models, ['claude-code', 'claude-code-x', 'anthropic/claude-haiku-5-5']); // combos + plain Anthropic only, no effort variants
     assert.strictEqual(m.default, 'claude-code');
   } finally { fake.close(); fs.rmSync(settings); }
+});
+
+const api = async (method, p, obj) => { const r = await call(method, p, { headers: { 'x-ui': '1' }, body: obj && JSON.stringify(obj) }); return { status: r.status, json: r.body ? JSON.parse(r.body) : null }; };
+
+test('projects: a new project gets a new folder inside home, and the same folder is not added twice', async () => {
+  assert.deepStrictEqual((await api('GET', '/api/projects')).json, []);
+  const a = await api('POST', '/api/projects', { name: 'My App' });
+  assert.strictEqual(a.status, 200);
+  assert.strictEqual(a.json.project.cwd, fs.realpathSync(path.join(home, 'Claude Projects', 'My App')));
+  assert.ok(fs.statSync(a.json.project.cwd).isDirectory());
+  const again = await api('POST', '/api/projects', { name: 'Renamed', path: a.json.project.cwd });
+  assert.ok(again.json.existing && again.json.project.id === a.json.project.id);
+  assert.strictEqual((await api('GET', '/api/projects')).json.length, 1);
+});
+
+test('projects: an existing or new nested folder inside home works; anything outside home is refused', async () => {
+  const nested = await api('POST', '/api/projects', { name: 'Deep', path: path.join(home, 'a', 'b', 'c') });
+  assert.strictEqual(nested.status, 200); assert.ok(fs.existsSync(path.join(home, 'a', 'b', 'c')));
+  const mine = await api('POST', '/api/projects', { name: 'Work', path: path.join(home, 'work') });
+  assert.strictEqual(mine.status, 200);
+  for (const bad of ['/etc', '/tmp/clui-outside', path.join(home, '..', 'outside'), path.join(home, 'x', '..', '..', 'outside'), path.join(home, 'escape', 'sub'), 'relative/path']) {
+    assert.strictEqual((await api('POST', '/api/projects', { name: 'Bad', path: bad })).status, 400, bad);
+  }
+  assert.ok(!fs.existsSync(path.join(tmp, 'outside')) && !fs.existsSync('/tmp/clui-outside')); // refused means nothing was created
+  assert.strictEqual((await api('POST', '/api/projects', { name: '   ' })).status, 400);
+});
+
+test('projects: a new chat may start in a project folder (and only there or in a known folder); removing a project keeps the folder', async () => {
+  const work = fs.realpathSync(path.join(home, 'work')), other = path.join(home, 'a');
+  assert.strictEqual((await post('new', { text: 'hi', cwd: other })).status, 400); // not a project, no chats there
+  assert.strictEqual((await post('new', { text: 'hi', cwd: work })).status, 200);
+  const id = (await api('GET', '/api/projects')).json.find((p) => p.cwd === work).id;
+  assert.strictEqual((await call('DELETE', `/api/projects/${id}`)).status, 404); // needs x-ui
+  assert.strictEqual((await api('DELETE', `/api/projects/${id}`)).status, 200);
+  assert.ok(fs.existsSync(work)); // the folder stays
+  assert.ok(!(await api('GET', '/api/projects')).json.some((p) => p.id === id));
+});
+
+test('uploads are found even when the chat history holds Windows-style (doubled backslash) paths', async () => {
+  const dir = path.dirname(JSON.parse((await call('POST', '/api/upload?name=w.txt', { headers: { 'x-ui': '1' }, body: 'w' })).body).path);
+  fs.appendFileSync(path.join(proj, 'p1', LIVE + '.jsonl'), '\n' + JSON.stringify({ type: 'user', message: { content: dir.split('/').join('\\\\') + '\\\\w.txt' } }));
+  assert.ok(lastArgs(await post(LIVE, { text: 'again' })).includes(`--add-dir ${dir}`));
 });

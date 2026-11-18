@@ -1,17 +1,18 @@
 #!/bin/sh
 # macOS: build "Claude Chats.app" (Whink logo with a Claude badge) that opens the UI, starting the server if needed.
-#   ./build-launcher.sh [folder]     default folder: ~/Applications
+#   sh mac/build-launcher.sh [folder]     default folder: ~/Applications
 # Drag the app to your Dock if you want it there. The Claude badge is taken from your installed Claude app at build time,
 # so the Claude artwork is not stored in this repository. Without the Claude app you get the Whink logo alone.
 set -e
 DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$DIR/.." && pwd)"
 APP="${1:-$HOME/Applications}/Claude Chats.app"
 WORK="$(mktemp -d)"
 CLAUDE_ICNS="/Applications/Claude.app/Contents/Resources/electron.icns"
 
 BADGE=-
 if [ -f "$CLAUDE_ICNS" ]; then sips -s format png "$CLAUDE_ICNS" --out "$WORK/claude.png" >/dev/null && BADGE="$WORK/claude.png"; fi
-osascript -l JavaScript "$DIR/tools/make-icon.js" "$DIR/assets/whink-logo.png" "$BADGE" "$WORK/icon.png" >/dev/null
+osascript -l JavaScript "$DIR/make-icon.js" "$ROOT/assets/whink-logo.png" "$BADGE" "$WORK/icon.png" >/dev/null
 mkdir "$WORK/i.iconset"
 for s in 16 32 128 256 512; do
   sips -z $s $s "$WORK/icon.png" --out "$WORK/i.iconset/icon_${s}x${s}.png" >/dev/null

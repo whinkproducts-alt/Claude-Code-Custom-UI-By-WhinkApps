@@ -1,54 +1,114 @@
 # Claude Chats
 
-A small local web page for [Claude Code](https://claude.com/claude-code). It lists every chat Claude Code has saved on this computer, shows the transcript, and lets you continue any chat or start a new one. It works with whatever models Claude Code is set up to use, including a gateway such as OmniRoute.
+A small local web page for [Claude Code](https://claude.com/claude-code). It lists every chat Claude Code has saved on this computer, groups them into projects and folders, and lets you continue any chat or start a new one. It works with whatever models Claude Code is set up to use, including a gateway such as OmniRoute.
 
 No database, no build step, no dependencies. Plain Node.
 
-## Download and install (Mac)
+## Pick your computer
 
-**1. Download the code.** Either way works. The repository is private, so sign in to GitHub first.
+| | |
+|---|---|
+| 🍎 **Mac** | [Install on Mac](#-install-on-mac) |
+| 🪟 **Windows** | [Install on Windows](#-install-on-windows) (written but **not yet tested on a real Windows PC**) |
+
+Everything Mac-only lives in the [`mac/`](mac) folder and everything Windows-only in [`windows/`](windows). Nothing else in the repo depends on your system.
+
+**Download the code first** (the repository is private, so sign in to GitHub):
 
 - On the GitHub page: click the green **Code** button, then **Download ZIP**, and unzip it.
-- Or in Terminal: `gh repo clone whinkproducts-alt/Claude-Code-Custom-UI-By-WhinkApps` (needs `gh auth login` once).
+- Or in a terminal: `gh repo clone whinkproducts-alt/Claude-Code-Custom-UI-By-WhinkApps` (needs `gh auth login` once).
 
-**2. Install what it needs.** Open Terminal in the downloaded folder and run:
+---
 
-```bash
-sh install.sh
-```
+## 🍎 Install on Mac
 
-This installs git, Node.js 20+, Claude Code and the GitHub CLI, and skips anything you already have. It needs [Homebrew](https://brew.sh); if that is missing, the script prints the one command to install it. After a fresh Claude Code install, run `claude` once and sign in.
+Open Terminal in the downloaded folder.
 
-**3. Make the app icon.**
+**1. Install what it needs** (git, Node.js 20+, Claude Code, GitHub CLI; skips what you have):
 
 ```bash
-sh build-launcher.sh
+sh mac/install.sh
 ```
 
-This creates **Claude Chats** in your `Applications` folder (inside your home folder) with the Whink logo and a Claude badge. Double-click it to open the page; it starts the server first if needed. Drag it to your Dock to keep it there. The Claude badge is copied from your installed Claude app, so you need that app for the badge (without it you get the Whink logo alone).
+It needs [Homebrew](https://brew.sh); if that is missing, the script prints the one command to install it. After a fresh Claude Code install, run `claude` once and sign in.
 
-**4. Optional: always on.** `sh autostart.sh install` starts it at every login (see below).
-
-No Mac, or you prefer to do it by hand? The commands are:
+**2. Make the app icon:**
 
 ```bash
-brew install git node gh                      # git, Node.js 20+, GitHub CLI
-curl -fsSL https://claude.ai/install.sh | bash   # Claude Code (then run: claude)
-brew install --cask tailscale                 # optional: reach a gateway on another computer
-node server.js                                # start it, then open http://127.0.0.1:3030
+sh mac/build-launcher.sh
 ```
 
-`install.sh --with-tailscale` installs Tailscale too. Your chats are read from `~/.claude/projects`, where Claude Code saves them. They live on each computer separately, so a second laptop shows only its own chats.
+This creates **Claude Chats** in your `Applications` folder (inside your home folder) with the Whink logo and a Claude badge. Double-click it to open the page; it starts the server first if needed. Drag it to your Dock to keep it there. The Claude badge is copied from your installed Claude app, so the Claude artwork is not stored in this repo; without that app you get the Whink logo alone.
+
+**3. Optional, always on:** `sh mac/autostart.sh install` starts it at every login and restarts it if it stops. `status` and `remove` also work. The agent runs the Node on your PATH at install time, so run `install` again after upgrading Node with a version manager. The log is `~/.claude-local-ui/server.log`.
+
+**By hand instead:**
+
+```bash
+brew install git node gh
+curl -fsSL https://claude.ai/install.sh | bash     # Claude Code, then run: claude
+brew install --cask tailscale                      # optional
+node server.js                                     # then open http://127.0.0.1:3030
+```
+
+`sh mac/install.sh --with-tailscale` installs Tailscale too.
+
+---
+
+## 🪟 Install on Windows
+
+> **Not tested on a real Windows PC yet.** The scripts follow Microsoft's and Anthropic's documented install steps, but expect to fix small things. Tell us what breaks.
+
+Open **PowerShell** in the downloaded folder (Windows 10 or 11).
+
+**1. Install what it needs** (Git, Node.js 20+, Claude Code, GitHub CLI; skips what you have):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows\install.ps1
+```
+
+Then **close the window and open a new PowerShell**, so the new programs are found. After a fresh Claude Code install, run `claude` once and sign in.
+
+**2. Make the desktop shortcut:**
+
+```powershell
+powershell -ExecutionPolicy Bypass -File windows\build-launcher.ps1
+```
+
+This puts **Claude Chats** (Whink logo) on your Desktop. Double-click it to open the page; it starts the server first if needed. Right-click it and choose **Pin to taskbar** to keep it there. (The Claude badge on the Mac icon comes from the Mac Claude app, so the Windows icon is the Whink logo alone.)
+
+**3. Optional, start at login:** `powershell -ExecutionPolicy Bypass -File windows\autostart.ps1 install` (also `status` and `remove`). It starts the server at each login but, unlike the Mac version, does not restart it if it later stops.
+
+**By hand instead:**
+
+```powershell
+winget install --id Git.Git -e
+winget install --id OpenJS.NodeJS.LTS -e
+winget install --id GitHub.cli -e
+irm https://claude.ai/install.ps1 | iex        # Claude Code, then run: claude
+node server.js                                 # then open http://127.0.0.1:3030
+```
+
+`windows\install.ps1 -WithTailscale` installs Tailscale too.
+
+---
 
 ## What it does
 
+- **Projects and folders:** chats are grouped by the folder they ran in. **＋ New project** creates a named project with a new folder (default `~/Claude Projects/<name>`) or an existing one, and chats started in it appear under it. Click a group header to expand or collapse it. **Expand all** and **Collapse all** act on every group. Removing a project keeps its folder and chats.
 - **Chats:** search, open, and continue any saved chat. Titles are Claude Code's own.
-- **New chat:** pick a folder you already use with Claude Code.
 - **Model and effort pickers:** the list is read from the gateway named in `~/.claude/settings.json` (OmniRoute combos plus its Anthropic models).
 - **Attachments:** attach files (up to 25 MB each, drag and drop works) or a folder (must be inside your home folder). Each upload sits in its own folder, and a chat can read only the uploads its own messages mention. Uploads are deleted after 30 days.
-- **Status light:** at the top of the sidebar, shows whether the gateway answers and whether Claude Code can be started. Refreshes every 30 seconds.
 - **Stop button:** ends the run and kills the Claude process.
 - **Downloads:** one chat as Markdown, Text, JSON, CSV, Web page, Word (`.docx` or old-style `.doc`) or PDF (browser print), plus all chats as one `.zip` of Markdown files.
+- **Status light:** shows whether the gateway answers and whether Claude Code can be started. Refreshes every 30 seconds.
+
+## Context and memory
+
+- **Inside one chat, context continues.** Every message resumes the same saved session, so Claude sees the whole history. Very long chats get compacted by Claude Code, and a model with a small context window may struggle sooner.
+- **Between chats, nothing carries over by itself.** Each new chat starts fresh.
+- **Chats in the same folder share what Claude Code stores per folder:** that folder's `CLAUDE.md` instructions and its auto-memory (`~/.claude/projects/<folder>/memory`). Your global `~/.claude/CLAUDE.md` applies everywhere. This is why a project is simply a folder: all its chats share the same instructions and memory.
+- **Switching models mid-chat is fine.** The history is resent each time, so a combo can fall back from a free model to a paid one without losing the thread.
 
 ## Permissions
 
@@ -78,16 +138,6 @@ This page launches Claude Code with the `ANTHROPIC_*` and `CLAUDE_CODE_*` variab
 
 The Claude desktop app sets its own endpoint and login, so it does not use this file. Only the terminal `claude` and this page do.
 
-## Start at login (macOS)
-
-```bash
-sh autostart.sh install    # start now and at every login, restart if it stops
-sh autostart.sh status
-sh autostart.sh remove
-```
-
-It runs the Node that is on your PATH when you install. If you upgrade Node with a version manager, run `install` again. The log is `~/.claude-local-ui/server.log`.
-
 ## Settings
 
 | Variable | Default | Meaning |
@@ -95,6 +145,7 @@ It runs the Node that is on your PATH when you install. If you upgrade Node with
 | `PORT` | `3030` | Port on 127.0.0.1 |
 | `CLAUDE_BIN` | `~/.local/bin/claude` if it exists, else `claude` from PATH | Claude Code executable |
 | `CLAUDE_PROJECTS` | `~/.claude/projects` | Where chats are read from |
+| `CLAUDE_UI_DATA` | `~/.claude-local-ui` | Where projects are kept |
 | `CLAUDE_UI_UPLOADS` | `~/.claude-local-ui/uploads` | Where attachments are saved |
 | `CLAUDE_UI_MAX_TURNS` | `60` | Turn cap per message |
 | `CLAUDE_UI_UPLOAD_DAYS` | `30` | Delete uploads older than this many days |
@@ -103,7 +154,8 @@ It runs the Node that is on your PATH when you install. If you upgrade Node with
 
 - Listens on 127.0.0.1 only. Requests with any other `Host` are refused (blocks DNS rebinding).
 - Anything that changes state needs the `x-ui` header, which a web page on another site cannot send.
-- Messages are limited to 1 MB, uploads to 25 MB. Attached folders are resolved (`../` and symlinks followed) and must stay inside your home folder.
+- Messages are limited to 1 MB, uploads to 25 MB. Project and attached folders are resolved (`../` and symlinks followed) and must stay inside your home folder.
+- A new chat can start only in a project folder or a folder you already use with Claude Code.
 - Anyone who can open the page on this computer can use your Claude Code. There is no login. Do not expose the port to a network.
 - The server reads your gateway key from `settings.json` only to list models. It never sends it to the browser.
 
@@ -113,11 +165,11 @@ It runs the Node that is on your PATH when you install. If you upgrade Node with
 node --test
 ```
 
-Needs the `unzip` command (present on macOS and most Linux).
+Needs the `unzip` command (present on macOS and most Linux). The Windows scripts have no automated tests.
 
 ## Known limits
 
 - Replies appear when a turn finishes, not word by word. No Markdown rendering.
 - Two writers on the same chat (this page and a terminal) can interleave. Do not use both at once.
 - A chat remembers its uploads through its own messages, so an upload cannot be re-read after the 30-day cleanup.
-- Tested on macOS only. `autostart.sh` is macOS only.
+- Developed and tested on macOS. Windows support is written but untested.

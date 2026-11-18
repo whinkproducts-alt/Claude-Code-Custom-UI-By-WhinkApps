@@ -9,8 +9,10 @@
   @media (prefers-color-scheme: dark) { :root { --bg:#262624; --panel:#1f1e1d; --ink:#faf9f5; --mute:#a3a198; --line:#3a3936; --user:#30302e; --accent:#d97757; } }
   * { box-sizing: border-box; }
   body { margin:0; height:100vh; display:grid; grid-template-columns: 320px 1fr; background:var(--bg); color:var(--ink); font:15px/1.55 -apple-system, system-ui, sans-serif; }
-  aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
-  aside header { padding:14px; display:grid; gap:8px; }
+  aside { background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; min-height:0; min-width:0; overflow:hidden; }
+  aside header { padding:14px; display:grid; grid-template-columns:minmax(0,1fr); gap:8px; } /* minmax(0,…) stops a long folder name from widening the sidebar */
+  aside header > * { min-width:0; width:100%; }
+  select, input { text-overflow:ellipsis; }
   input, select, textarea, button { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
   button { cursor:pointer; } button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
   button:disabled { opacity:.5; cursor:default; }
@@ -20,6 +22,18 @@
   .s b { display:block; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .s small { color:var(--mute); }
   .s.gone { opacity:.55; }
+  .s { padding-left:26px; }
+  .g { display:flex; align-items:center; gap:6px; padding:8px 12px; border-top:1px solid var(--line); cursor:pointer; user-select:none; font-weight:600; }
+  .g:hover { background:var(--user); }
+  .g .t { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .g .n { color:var(--mute); font-weight:400; font-size:12px; }
+  .g .acts { margin-left:auto; display:flex; gap:4px; flex:none; }
+  .g .acts button { padding:0 8px; line-height:22px; font-weight:400; }
+  .row { display:flex; gap:8px; } .row > button { flex:1; min-width:0; }
+  dialog { background:var(--bg); color:var(--ink); border:1px solid var(--line); border-radius:12px; padding:20px; width:min(420px,90vw); }
+  dialog::backdrop { background:rgba(0,0,0,.45); }
+  dialog label { display:block; margin:12px 0; font-size:13px; color:var(--mute); } dialog input { width:100%; margin-top:4px; }
+  dialog menu { display:flex; justify-content:flex-end; gap:8px; padding:0; margin:16px 0 0; } #perr { color:#d1453b; font-size:13px; min-height:1em; }
   main { display:flex; flex-direction:column; min-height:0; }
   #head { padding:8px 20px; border-bottom:1px solid var(--line); color:var(--mute); font-size:13px; min-height:46px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
   #title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #exp { display:flex; gap:6px; flex:none; }
@@ -37,20 +51,30 @@
   .m.card pre { margin:6px 0; white-space:pre-wrap; font:12px ui-monospace, Menlo, monospace; }
   .m.card button { margin-right:8px; }
   #msgs.drop { outline:2px dashed var(--accent); outline-offset:-8px; }
-  @media (max-width: 720px) { body { grid-template-columns: 1fr; grid-template-rows: 38vh 1fr; } aside { border-right:0; border-bottom:1px solid var(--line); } }
+  @media (max-width: 720px) { body { grid-template-columns: 1fr; grid-template-rows: 46vh 1fr; } aside { border-right:0; border-bottom:1px solid var(--line); overflow:auto; } #list { overflow:visible; flex:none; } }
 </style>
 </head>
 <body>
 <aside>
   <header>
     <div id="status" role="status" style="font-size:12px;color:var(--mute)">Checking…</div>
+    <button id="newProject" class="primary">＋ New project</button>
     <input id="q" placeholder="Search chats" aria-label="Search chats">
-    <select id="cwd" aria-label="Folder for new chat"></select>
+    <select id="cwd" aria-label="Folder for a new chat"></select>
     <button id="new">New chat in this folder</button>
-    <a href="/api/export-all.zip" download><button type="button" style="width:100%">Download all chats (.zip)</button></a>
+    <div class="row"><button id="expandAll" type="button">Expand all</button><button id="collapseAll" type="button">Collapse all</button></div>
+    <button id="allzip" type="button">Download all chats (.zip)</button>
   </header>
   <div id="list"></div>
 </aside>
+<dialog id="projDlg"><form id="projForm" method="dialog">
+  <h3 style="margin:0">New project</h3>
+  <label>Name<input id="pname" maxlength="60" required autocomplete="off"></label>
+  <label>Folder (optional)<input id="ppath" autocomplete="off" placeholder="Empty = create ~/Claude Projects/<name>"></label>
+  <div style="font-size:12px;color:var(--mute)">Paste a full path to use an existing folder or make a new one. It must be inside your home folder. Chats started in the project run in this folder.</div>
+  <div id="perr"></div>
+  <menu><button type="button" id="pcancel">Cancel</button><button id="pgo" class="primary">Create project</button></menu>
+</form></dialog>
 <main>
   <div id="head"><span id="title">Pick a chat, or start a new one.</span>
     <span id="exp" hidden><select id="fmt" aria-label="Download format">
@@ -85,17 +109,71 @@ const ago = (ms) => { const m = (Date.now() - ms) / 6e4; return m < 60 ? `${m|0}
 // Scratch workspaces have long random paths; show the last part only.
 const folder = (p) => { const s = (p || '').split('/').filter(Boolean); return p && p.includes('scratch-workspaces') ? `scratch · ${s.at(-1)}` : s.slice(-2).join('/'); };
 
+let projects = [];
+const store = { get: (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }, set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} } };
+let openMap = store.get('openGroups', {}); // group key -> open? (projects start open, other folders closed)
+const isOpen = (key, def) => $('#q').value ? true : (key in openMap ? openMap[key] : def);
+
 async function load() {
-  sessions = await (await fetch('/api/sessions')).json();
-  const cwds = [...new Set(sessions.filter((s) => s.alive).map((s) => s.cwd))]; // folders that were deleted cannot host a chat
-  $('#cwd').innerHTML = cwds.map((c) => `<option value="${esc(c)}">${esc(folder(c))}</option>`).join('');
+  [sessions, projects] = await Promise.all([fetch('/api/sessions').then((r) => r.json()), fetch('/api/projects').then((r) => r.json())]);
+  const projectDirs = new Set(projects.map((p) => p.cwd));
+  const others = [...new Set(sessions.filter((s) => s.alive && !projectDirs.has(s.cwd)).map((s) => s.cwd))];
+  const opt = (c, label) => `<option value="${esc(c)}">${esc(label)}</option>`;
+  const keep = $('#cwd').value;
+  $('#cwd').innerHTML = (projects.some((p) => p.alive) ? `<optgroup label="Projects">${projects.filter((p) => p.alive).map((p) => opt(p.cwd, p.name)).join('')}</optgroup>` : '') +
+    (others.length ? `<optgroup label="Other folders">${others.map((c) => opt(c, folder(c))).join('')}</optgroup>` : '');
+  if (keep && [...$('#cwd').options].some((o) => o.value === keep)) $('#cwd').value = keep;
   draw();
 }
-function draw() {
-  const q = $('#q').value.toLowerCase();
-  $('#list').innerHTML = sessions.filter((s) => (s.title + s.cwd).toLowerCase().includes(q))
-    .map((s) => `<div class="s ${cur?.id === s.id ? 'on' : ''} ${s.alive ? '' : 'gone'}" data-id="${s.id}"><b>${esc(s.title)}</b><small>${esc(folder(s.cwd))}${s.alive ? '' : ' (folder gone)'} · ${ago(s.mtime)}</small></div>`).join('');
+function chatRow(s) {
+  return `<div class="s ${cur?.id === s.id ? 'on' : ''} ${s.alive ? '' : 'gone'}" data-id="${s.id}"><b>${esc(s.title)}</b><small>${s.alive ? '' : '(folder gone) · '}${ago(s.mtime)}</small></div>`;
 }
+function group(key, title, chats, def, extra = '') {
+  const q = $('#q').value.toLowerCase();
+  const shown = q ? chats.filter((s) => (s.title + s.cwd + title).toLowerCase().includes(q)) : chats;
+  if (q && !shown.length) return '';
+  const open = isOpen(key, def);
+  return `<div class="g" data-key="${esc(key)}" data-def="${def}" role="button" aria-expanded="${open}"><span>${open ? '▾' : '▸'}</span><span class="t">${esc(title)}</span><span class="n">${shown.length}</span>${extra}</div>` + (open ? shown.map(chatRow).join('') : '');
+}
+function draw() {
+  const byDir = new Map();
+  for (const s of sessions) byDir.set(s.cwd, [...(byDir.get(s.cwd) || []), s]);
+  const projectDirs = new Set(projects.map((p) => p.cwd));
+  const acts = (p) => `<span class="acts"><button data-act="new" data-cwd="${esc(p.cwd)}" title="New chat in this project" ${p.alive ? '' : 'disabled'}>＋</button><button data-act="rm" data-id="${p.id}" title="Remove project (keeps folder and chats)">×</button></span>`;
+  const html = projects.map((p) => group('p:' + p.id, p.name + (p.alive ? '' : ' (folder gone)'), byDir.get(p.cwd) || [], true, acts(p))).join('') +
+    [...byDir].filter(([c]) => !projectDirs.has(c)).sort((a, b) => Math.max(...b[1].map((s) => s.mtime)) - Math.max(...a[1].map((s) => s.mtime)))
+      .map(([c, list]) => group('f:' + c, c ? folder(c) : 'Unknown folder', list, false)).join('');
+  $('#list').innerHTML = html || '<div class="empty" style="margin-top:2rem">No chats yet. Create a project, then start a chat.</div>';
+}
+function startIn(cwd) { $('#cwd').value = cwd; $('#new').click(); }
+$('#list').addEventListener('click', (e) => {
+  const act = e.target.closest('button[data-act]');
+  if (act) {
+    e.stopPropagation();
+    if (act.dataset.act === 'new') return startIn(act.dataset.cwd);
+    const p = projects.find((x) => x.id === act.dataset.id);
+    if (p && confirm(`Remove project "${p.name}" from the list?\nIts folder and chats are kept.`)) fetch('/api/projects/' + p.id, { method: 'DELETE', headers: H }).then(load);
+    return;
+  }
+  const g = e.target.closest('.g');
+  if (g) { openMap[g.dataset.key] = !isOpen(g.dataset.key, g.dataset.def === 'true'); store.set('openGroups', openMap); draw(); }
+});
+const setAll = (open) => { for (const g of $('#list').querySelectorAll('.g')) openMap[g.dataset.key] = open; store.set('openGroups', openMap); draw(); };
+$('#expandAll').onclick = () => setAll(true);
+$('#collapseAll').onclick = () => setAll(false);
+$('#allzip').onclick = () => { location.href = '/api/export-all.zip'; };
+
+// New project: name, plus an existing or new folder (empty = ~/Claude Projects/<name>).
+$('#newProject').onclick = () => { $('#perr').textContent = ''; $('#pname').value = ''; $('#ppath').value = ''; $('#projDlg').showModal(); $('#pname').focus(); };
+$('#pcancel').onclick = () => $('#projDlg').close();
+$('#projForm').onsubmit = async (e) => {
+  e.preventDefault();
+  const r = await fetch('/api/projects', { method: 'POST', headers: H, body: JSON.stringify({ name: $('#pname').value, path: $('#ppath').value.trim() }) });
+  const j = await r.json();
+  if (!r.ok) { $('#perr').textContent = j.error || 'Could not create the project.'; return; }
+  $('#projDlg').close(); openMap['p:' + j.project.id] = true; store.set('openGroups', openMap);
+  await load(); startIn(j.project.cwd);
+};
 function el(role, text) { const d = document.createElement('div'); d.className = 'm ' + role; d.textContent = text; return d; }
 function add(role, text) { const d = el(role, text); $('#msgs').append(d); $('#msgs').scrollTop = 1e9; return d; }
 function setCur(c, title) { cur = c; $('#title').textContent = title; $('#exp').hidden = c.id === 'new'; draw(); } // a new chat has nothing to export until it gets a reply

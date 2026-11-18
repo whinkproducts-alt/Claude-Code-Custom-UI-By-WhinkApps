@@ -12,7 +12,8 @@ const { isApproval } = require('./rules');
 
 const PORT = process.env.PORT === undefined ? 3030 : Number(process.env.PORT);
 // Read per request. Default: the usual install spot if it exists, else whatever `claude` is on PATH.
-const claudeBin = () => process.env.CLAUDE_BIN || (fs.existsSync(path.join(os.homedir(), '.local/bin/claude')) ? path.join(os.homedir(), '.local/bin/claude') : 'claude');
+const EXE = process.platform === 'win32' ? 'claude.exe' : 'claude';
+const claudeBin = () => process.env.CLAUDE_BIN || (fs.existsSync(path.join(os.homedir(), '.local', 'bin', EXE)) ? path.join(os.homedir(), '.local', 'bin', EXE) : 'claude');
 const MAX_TURNS = process.env.CLAUDE_UI_MAX_TURNS || '60'; // a stuck loop must end on its own
 const UPLOADS = process.env.CLAUDE_UI_UPLOADS || path.join(os.homedir(), '.claude-local-ui', 'uploads');
 const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
@@ -54,8 +55,9 @@ const claudeFound = () => {
 const send = (res, code, body, type = 'application/json') => { res.writeHead(code, { 'content-type': type }); res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body)); };
 
 // Each upload gets its own random folder: UPLOADS/<16 hex>/<name>. A chat can read only the upload folders its own text mentions.
-const UPLOAD_ID = new RegExp(UPLOADS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/([0-9a-f]{16})/', 'g');
-const uploadDirsIn = (...texts) => [...new Set(texts.flatMap((t) => [...t.matchAll(UPLOAD_ID)].map((m) => path.join(UPLOADS, m[1]))))].filter((d) => fs.existsSync(d));
+const slashes = (x) => String(x).replace(/\\+/g, '/'); // Windows paths use backslashes, and JSON doubles them
+const UPLOAD_ID = new RegExp(slashes(UPLOADS).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '/([0-9a-f]{16})/', 'gi');
+const uploadDirsIn = (...texts) => [...new Set(texts.flatMap((t) => [...slashes(t).matchAll(UPLOAD_ID)].map((m) => path.join(UPLOADS, m[1].toLowerCase()))))].filter((d) => fs.existsSync(d));
 // Delete upload folders not touched for N days (default 30).
 function pruneUploads(days = Number(process.env.CLAUDE_UI_UPLOAD_DAYS) || 30) {
   const cutoff = Date.now() - days * 864e5; let removed = 0;
@@ -80,14 +82,45 @@ function readBody(req, res, max, done) {
   req.on('end', () => { if (!res.writableEnded) done(Buffer.concat(parts)); });
 }
 
-// A folder may be attached only if, after following ../ and symlinks, it is a real folder inside your home directory. Returns that real path or null.
+// Inside your home folder, after following ../ and symlinks? (works for Windows paths too)
+const homeReal = () => fs.realpathSync(os.homedir());
+const insideHome = (real) => { const rel = path.relative(homeReal(), real); return !rel.startsWith('..') && !path.isAbsolute(rel); };
+// An existing folder inside your home directory, as its real path, or null.
 const resolveDir = (d) => {
   try {
     if (typeof d !== 'string' || !path.isAbsolute(d)) return null;
     const real = fs.realpathSync(d);
-    return (real + '/').startsWith(fs.realpathSync(os.homedir()) + '/') && fs.statSync(real).isDirectory() ? real : null;
+    return insideHome(real) && fs.statSync(real).isDirectory() ? real : null;
   } catch { return null; }
 };
+// Same, but creates the folder (and parents) if it does not exist yet. Checks the nearest existing parent so ../ tricks fail.
+const makeDir = (d) => {
+  try {
+    if (typeof d !== 'string' || !path.isAbsolute(d)) return null;
+    let near = path.resolve(d); while (!fs.existsSync(near)) near = path.dirname(near);
+    if (!insideHome(fs.realpathSync(near))) return null;
+    fs.mkdirSync(path.resolve(d), { recursive: true });
+    return resolveDir(path.resolve(d));
+  } catch { return null; }
+};
+
+// Projects: a name plus a folder. Chats started in that folder belong to the project. Stored in one small file.
+const dataDir = () => process.env.CLAUDE_UI_DATA || path.join(os.homedir(), '.claude-local-ui');
+const projectsFile = () => path.join(dataDir(), 'projects.json');
+const loadProjects = () => { try { return JSON.parse(fs.readFileSync(projectsFile(), 'utf8')); } catch { return []; } };
+const saveProjects = (list) => { fs.mkdirSync(dataDir(), { recursive: true }); fs.writeFileSync(projectsFile(), JSON.stringify(list, null, 2)); };
+const withAlive = (p) => ({ ...p, alive: fs.existsSync(p.cwd) });
+function createProject(name, wanted) {
+  const clean = String(name || '').replace(/[\u0000-\u001f]/g, '').trim().slice(0, 60);
+  if (!clean) return { error: 'give the project a name' };
+  const folder = wanted ? makeDir(wanted) : makeDir(path.join(os.homedir(), 'Claude Projects', clean.replace(/[^\w .-]+/g, '_')));
+  if (!folder) return { error: 'the folder must be inside your home folder' };
+  const list = loadProjects(), same = list.find((p) => p.cwd === folder);
+  if (same) return { project: withAlive(same), existing: true };
+  const project = { id: 'p' + crypto.randomBytes(5).toString('hex'), name: clean, cwd: folder };
+  saveProjects([...list, project]);
+  return { project: withAlive(project) };
+}
 
 const server = http.createServer((req, res) => {
   // This server runs commands, so only the page itself may call it: block DNS-rebinding and cross-site posts.
@@ -125,6 +158,20 @@ const server = http.createServer((req, res) => {
     });
   }
 
+  if (url.pathname === '/api/projects') {
+    if (req.method === 'GET') return send(res, 200, loadProjects().map(withAlive));
+    if (req.method === 'POST' && req.headers['x-ui'] === '1') return readBody(req, res, 10_000, (raw) => {
+      let b; try { b = JSON.parse(raw); } catch { return send(res, 400, { error: 'bad json' }); }
+      const r = createProject(b.name, b.path || '');
+      send(res, r.error ? 400 : 200, r);
+    });
+  }
+  const proj = url.pathname.match(/^\/api\/projects\/(p[0-9a-f]{10})$/);
+  if (proj && req.method === 'DELETE' && req.headers['x-ui'] === '1') { // removes the entry only; the folder and its chats stay
+    saveProjects(loadProjects().filter((p) => p.id !== proj[1]));
+    return send(res, 200, { ok: true });
+  }
+
   const m = url.pathname.match(/^\/api\/sessions\/([^/]+)(\/send)?$/);
   if (!m) return send(res, 404, { error: 'not found' });
   const id = m[1];
@@ -137,8 +184,8 @@ const server = http.createServer((req, res) => {
     return readBody(req, res, MAX_BODY, (raw) => {
       let b;
       try { b = JSON.parse(raw); } catch { return send(res, 400, { error: 'bad json' }); }
-      // New chats may only start in a folder you already use with Claude Code.
-      const cwd = known ? known.cwd : listSessions().map((s) => s.cwd).find((c) => c && c === b.cwd);
+      // A new chat may start only in a project folder or a folder you already use with Claude Code.
+      const cwd = known ? known.cwd : [...loadProjects().map((p) => p.cwd), ...listSessions().map((s) => s.cwd)].find((c) => c && c === b.cwd);
       if (!cwd || !b.text) return send(res, 400, { error: 'need text and a known folder' });
       if (!fs.existsSync(cwd)) return send(res, 400, { error: `That chat's folder no longer exists: ${cwd}` });
       const allow = b.allow ?? [], asked = b.dirs ?? [];
@@ -172,4 +219,5 @@ if (require.main === module) {
   pruneUploads(); setInterval(pruneUploads, 6 * 3600e3).unref();
 }
 server.pruneUploads = pruneUploads;
+server.createProject = createProject;
 module.exports = server;
