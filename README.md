@@ -4,19 +4,41 @@ A small local web page for [Claude Code](https://claude.com/claude-code). It lis
 
 No database, no build step, no dependencies. Plain Node.
 
-## Run it
+## Download and install (Mac)
 
-You need **Node 20 or newer** (tested on 22) and **Claude Code installed and signed in** (or configured for a gateway, see below).
+**1. Download the code.** Either way works. The repository is private, so sign in to GitHub first.
+
+- On the GitHub page: click the green **Code** button, then **Download ZIP**, and unzip it.
+- Or in Terminal: `gh repo clone whinkproducts-alt/Claude-Code-Custom-UI-By-WhinkApps` (needs `gh auth login` once).
+
+**2. Install what it needs.** Open Terminal in the downloaded folder and run:
 
 ```bash
-git clone <this repo>
-cd claude-local-ui
-node server.js
+sh install.sh
 ```
 
-Open <http://127.0.0.1:3030>.
+This installs git, Node.js 20+, Claude Code and the GitHub CLI, and skips anything you already have. It needs [Homebrew](https://brew.sh); if that is missing, the script prints the one command to install it. After a fresh Claude Code install, run `claude` once and sign in.
 
-Your chats are read from `~/.claude/projects`, where Claude Code saves them. They live on each computer separately, so a second laptop shows only its own chats.
+**3. Make the app icon.**
+
+```bash
+sh build-launcher.sh
+```
+
+This creates **Claude Chats** in your `Applications` folder (inside your home folder) with the Whink logo and a Claude badge. Double-click it to open the page; it starts the server first if needed. Drag it to your Dock to keep it there. The Claude badge is copied from your installed Claude app, so you need that app for the badge (without it you get the Whink logo alone).
+
+**4. Optional: always on.** `sh autostart.sh install` starts it at every login (see below).
+
+No Mac, or you prefer to do it by hand? The commands are:
+
+```bash
+brew install git node gh                      # git, Node.js 20+, GitHub CLI
+curl -fsSL https://claude.ai/install.sh | bash   # Claude Code (then run: claude)
+brew install --cask tailscale                 # optional: reach a gateway on another computer
+node server.js                                # start it, then open http://127.0.0.1:3030
+```
+
+`install.sh --with-tailscale` installs Tailscale too. Your chats are read from `~/.claude/projects`, where Claude Code saves them. They live on each computer separately, so a second laptop shows only its own chats.
 
 ## What it does
 
@@ -59,9 +81,9 @@ The Claude desktop app sets its own endpoint and login, so it does not use this 
 ## Start at login (macOS)
 
 ```bash
-./autostart.sh install    # start now and at every login, restart if it stops
-./autostart.sh status
-./autostart.sh remove
+sh autostart.sh install    # start now and at every login, restart if it stops
+sh autostart.sh status
+sh autostart.sh remove
 ```
 
 It runs the Node that is on your PATH when you install. If you upgrade Node with a version manager, run `install` again. The log is `~/.claude-local-ui/server.log`.
