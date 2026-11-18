@@ -35,8 +35,10 @@
   dialog label { display:block; margin:12px 0; font-size:13px; color:var(--mute); } dialog input { width:100%; margin-top:4px; }
   dialog menu { display:flex; justify-content:flex-end; gap:8px; padding:0; margin:16px 0 0; } #perr { color:#d1453b; font-size:13px; min-height:1em; }
   main { display:flex; flex-direction:column; min-height:0; }
-  #head { padding:8px 20px; border-bottom:1px solid var(--line); color:var(--mute); font-size:13px; min-height:46px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  #head { padding:8px 20px; border-bottom:1px solid var(--line); color:var(--mute); font-size:13px; min-height:60px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
   #title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } #exp { display:flex; gap:6px; flex:none; }
+  #head .right { display:flex; align-items:center; gap:12px; flex:none; }
+  #brand { display:block; flex:none; } #brand img { height:44px; width:44px; border-radius:10px; display:block; }
   #msgs { flex:1; overflow:auto; padding:20px; }
   .m { max-width:760px; margin:0 auto 14px; white-space:pre-wrap; word-wrap:break-word; }
   .m.user { background:var(--user); padding:10px 14px; border-radius:12px; }
@@ -77,10 +79,11 @@
 </form></dialog>
 <main>
   <div id="head"><span id="title">Pick a chat, or start a new one.</span>
-    <span id="exp" hidden><select id="fmt" aria-label="Download format">
+    <span class="right"><span id="exp" hidden><select id="fmt" aria-label="Download format">
       <option value="md">Markdown (.md)</option><option value="txt">Text (.txt)</option><option value="json">JSON (.json)</option>
       <option value="csv">CSV (.csv)</option><option value="html">Web page (.html)</option><option value="docx">Word (.docx)</option><option value="doc">Word, old style (.doc)</option><option value="pdf">PDF (print)</option>
-    </select><button id="dl">Download</button></span></div>
+    </select><button id="dl">Download</button></span>
+    <a id="brand" href="https://whink-group.onrender.com/?utm_source=github&amp;utm_medium=claude-chats&amp;utm_campaign=repo" target="_blank" rel="noopener" title="WhinkApps, a Whink Group company"><img src="/assets/whink-logo-small.png" alt="WhinkApps"></a></span></div>
   <div id="msgs"><div class="empty">Your Claude Code chats appear on the left.</div></div>
   <form id="f">
     <div class="opts">

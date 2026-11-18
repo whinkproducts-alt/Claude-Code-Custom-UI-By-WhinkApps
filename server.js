@@ -128,6 +128,8 @@ const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://x');
 
   if (req.method === 'GET' && url.pathname === '/') return send(res, 200, fs.readFileSync(path.join(__dirname, 'index.html')), 'text/html');
+  // Only the logo is served from assets/, by exact name.
+  if (req.method === 'GET' && url.pathname === '/assets/whink-logo-small.png') return send(res, 200, fs.readFileSync(path.join(__dirname, 'assets', 'whink-logo-small.png')), 'image/png');
   if (req.method === 'GET' && url.pathname === '/rules.js') return send(res, 200, fs.readFileSync(path.join(__dirname, 'rules.js')), 'text/javascript');
   if (req.method === 'GET' && url.pathname === '/export.js') return send(res, 200, fs.readFileSync(path.join(__dirname, 'export.js')), 'text/javascript');
   if (req.method === 'GET' && url.pathname === '/api/sessions') return send(res, 200, listSessions(true).map(({ file, ...s }) => s));

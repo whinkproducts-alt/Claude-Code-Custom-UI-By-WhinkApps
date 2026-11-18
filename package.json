@@ -1,1 +1,17 @@
-{"name":"claude-local-ui","private":true,"type":"commonjs","scripts":{"start":"node server.js","test":"node --test"}}
+{
+  "name": "claude-local-ui",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "description": "A local web page for Claude Code: browse, group and continue your chats, with a gateway status light and one-command setup.",
+  "author": "WhinkApps (A WHINK GROUP Company) <https://whink-group.onrender.com/>",
+  "license": "Apache-2.0",
+  "homepage": "https://whink-group.onrender.com/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/whinkproducts-alt/Claude-Code-Custom-UI-By-WhinkApps.git"
+  }
+}

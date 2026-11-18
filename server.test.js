@@ -211,3 +211,16 @@ test('uploads are found even when the chat history holds Windows-style (doubled 
   fs.appendFileSync(path.join(proj, 'p1', LIVE + '.jsonl'), '\n' + JSON.stringify({ type: 'user', message: { content: dir.split('/').join('\\\\') + '\\\\w.txt' } }));
   assert.ok(lastArgs(await post(LIVE, { text: 'again' })).includes(`--add-dir ${dir}`));
 });
+
+test('the WhinkApps logo is served by exact name only', async () => {
+  const r = await new Promise((resolve, reject) => http.get({ host: '127.0.0.1', port, path: '/assets/whink-logo-small.png', headers: { host: `127.0.0.1:${port}` } }, (res) => { const c = []; res.on('data', (d) => c.push(d)); res.on('end', () => resolve({ status: res.statusCode, type: res.headers['content-type'], body: Buffer.concat(c) })); }).on('error', reject));
+  assert.deepStrictEqual([r.status, r.type, r.body.subarray(1, 4).toString()], [200, 'image/png', 'PNG']);
+  for (const p of ['/assets/whink-logo.png', '/assets/../server.js', '/assets/%2e%2e/server.js']) assert.strictEqual((await call('GET', p)).status, 404, p);
+});
+
+test('branding: the page shows the logo linked to the Whink website, and the package names the author', () => {
+  const html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8'), pkg = require('./package.json');
+  assert.match(html, /<a id="brand" href="https:\/\/whink-group\.onrender\.com\/[^"]*utm_source=github[^"]*" target="_blank" rel="noopener"[^>]*><img src="\/assets\/whink-logo-small\.png"/);
+  assert.match(pkg.author, /^WhinkApps/); assert.strictEqual(pkg.license, 'Apache-2.0');
+  assert.ok(fs.readFileSync(path.join(__dirname, 'NOTICE'), 'utf8').includes('WhinkApps'));
+});

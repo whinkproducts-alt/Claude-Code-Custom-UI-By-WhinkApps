@@ -1,4 +1,10 @@
-# Claude Chats
+<p align="center">
+  <a href="https://whink-group.onrender.com/?utm_source=github&utm_medium=readme&utm_campaign=claude-chats"><img src="assets/whink-logo.png" alt="WhinkApps: Create | Innovate | Elevate" width="280"></a>
+</p>
+
+<h1 align="center">Claude Chats</h1>
+
+<p align="center"><b>A free local chat window for Claude Code, by <a href="https://whink-group.onrender.com/?utm_source=github&utm_medium=readme&utm_campaign=claude-chats">WhinkApps</a>, a Whink Group company.</b></p>
 
 A small local web page for [Claude Code](https://claude.com/claude-code). It lists every chat Claude Code has saved on this computer, groups them into projects and folders, and lets you continue any chat or start a new one. It works with whatever models Claude Code is set up to use, including a gateway such as OmniRoute.
 
@@ -207,3 +213,9 @@ This is an independent project. It is not made by or affiliated with Anthropic. 
 - Two writers on the same chat (this page and a terminal) can interleave. Do not use both at once.
 - A chat remembers its uploads through its own messages, so an upload cannot be re-read after the 30-day cleanup.
 - Developed and tested on macOS. Windows support is written but untested.
+
+## About WhinkApps
+
+Claude Chats is made and maintained by **WhinkApps, a Whink Group company**: *Create. Innovate. Elevate.* See what else we build at [whink-group.onrender.com](https://whink-group.onrender.com/?utm_source=github&utm_medium=readme-footer&utm_campaign=claude-chats).
+
+If this saved you time, a star on the repository helps others find it.
